@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>琴チューナー</title>
+
+<link rel="manifest" href="manifest.json">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#d8c8a8">
+
+<style>
+body {
+  margin: 0;
+  font-family: "Hiragino Mincho ProN", "Yu Mincho", serif;
+  background: linear-gradient(rgba(255,255,255,0.85), rgba(255,255,255,0.85)),
+    repeating-linear-gradient(45deg, #d8c8a8, #d8c8a8 10px, #e6d8b8 10px, #e6d8b8 20px);
+  color: #2c2c2c;
+  text-align: center;
+}
+.container { padding-top: 40px; }
+h1 { letter-spacing: 4px; font-size: 28px; }
+select { font-size: 18px; padding: 6px 12px; margin-top: 10px; }
+.freq { font-size: 42px; margin-top: 20px; }
+.note { font-size: 34px; }
+.result { font-size: 26px; margin-top: 10px; min-height: 1.2em; }
+.ok { color: #2e8b57; }
+.low { color: #1f6fb2; }
+.high { color: #b22222; }
+.meter { width: 260px; height: 130px; margin: 30px auto; position: relative; overflow: hidden; }
+.arc { width: 100%; height: 200%; border-radius: 50%; border: 6px solid #444; box-sizing: border-box; }
+.needle { width: 4px; height: 110px; background: #b22222; position: absolute; bottom: 0; left: 50%; transform-origin: bottom center; transform: rotate(0deg); transition: transform 0.1s; }
+#startBtn { font-size: 20px; padding: 15px 30px; margin-top: 20px; background: #8b4513; color: white; border: none; border-radius: 8px; cursor: pointer; }
+</style>
+</head>
+
+<body>
+<div class="container">
+  <h1>琴 調律</h1>
+  <select id="mode">
+    <option value="hira">平調子</option>
+    <option value="kumoi">雲井調子</option>
+  </select>
+  <div class="freq" id="freq">-- Hz</div>
+  <div class="note" id="note">---</div>
+  <div class="meter"><div class="arc"></div><div class="needle" id="needle"></div></div>
+  <div class="result" id="result">下のボタンを押して開始</div>
+  <button id="startBtn">チューナーを起動する</button>
+</div>
+
+<script>
+// サービスワーカーの登録
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').then(() => console.log('SW Registered'));
+}
+
+const MODES = { hira: [196,220,247,262,294,330,349,392,440,494,523,587,659], kumoi: [196,233,262,294,330,349,392,440,466,523,587,622,698] };
+const freqEl = document.getElementById("freq"), noteEl = document.getElementById("note"), resultEl = document.getElementById("result"), needle = document.getElementById("needle"), modeSelect = document.getElementById("mode"), startBtn = document.getElementById("startBtn");
+
+let audioContext, analyser, buffer;
+
+startBtn.onclick = () => {
+  audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+    const source = audioContext.createMediaStreamSource(stream);
+    analyser = audioContext.createAnalyser();
+    analyser.fftSize = 2048;
+    source.connect(analyser);
+    buffer = new Float32Array(analyser.fftSize);
+    startBtn.style.display = "none";
+    resultEl.textContent = "音を出してください";
+    update();
+  }).catch(err => alert("マイクの使用を許可してください"));
+};
+
+function autoCorrelate(buf, rate) {
+  let rms = 0;
+  for (let v of buf) rms += v*v;
+  rms = Math.sqrt(rms/buf.length);
+  if (rms < 0.01) return -1;
+  let bestOffset = -1, bestCorr = 0;
+  for (let offset=20; offset<1000; offset++) {
+    let corr = 0;
+    for (let i=0; i<buf.length-offset; i++) corr += buf[i]*buf[i+offset];
+    if (corr > bestCorr) { bestCorr = corr; bestOffset = offset; }
+  }
+  return rate / bestOffset;
+}
+
+function update() {
+  analyser.getFloatTimeDomainData(buffer);
+  const freq = autoCorrelate(buffer, audioContext.sampleRate);
+  if (freq > 0) {
+    freqEl.textContent = freq.toFixed(1) + " Hz";
+    const notes = MODES[modeSelect.value];
+    let idx = 0, diff = Infinity;
+    notes.forEach((f,i)=>{
+      const d = freq - f;
+      if (Math.abs(d) < Math.abs(diff)) { diff = d; idx = i; }
+    });
+    noteEl.textContent = `第${idx+1}弦`;
+    const angle = Math.max(-45, Math.min(45, diff*5));
+    needle.style.transform = `rotate(${angle}deg)`;
+    if (Math.abs(diff) < 1) { resultEl.textContent = "合ってます"; resultEl.className = "result ok"; }
+    else if (diff < 0) { resultEl.textContent = "低い"; resultEl.className = "result low"; }
+    else { resultEl.textContent = "高い"; resultEl.className = "result high"; }
+  }
+  requestAnimationFrame(update);
+}
+</script>
+</body>
+</html>

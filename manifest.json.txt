@@ -1,0 +1,21 @@
+{
+  "name": "琴チューナー",
+  "short_name": "琴調律",
+  "description": "和楽器（琴）専用の調律アプリ",
+  "start_url": "koto_tuner.html",
+  "display": "standalone",
+  "background_color": "#d8c8a8",
+  "theme_color": "#d8c8a8",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
